@@ -1,0 +1,19 @@
+{
+  "host": "0.0.0.0",
+  "port": 4443,
+  "server_name": "telemetry.your-domain.example",
+  "log_level": "info",
+  "json_log_enable": true,
+  "namespace": "tesla",
+  "tls": {
+    "server_cert": "/letsencrypt/live/your-cert/fullchain.pem",
+    "server_key": "/letsencrypt/live/your-cert/privkey.pem"
+  },
+  "records": { "V": ["mqtt"] },
+  "mqtt": {
+    "broker": "tcp://mosquitto:1883",
+    "client_id": "fleet-telemetry",
+    "topic_base": "tesla",
+    "qos": 1
+  }
+}

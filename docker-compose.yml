@@ -1,0 +1,58 @@
+services:
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: tesla-osrm
+    restart: always
+    mem_limit: 1500m
+    volumes:
+      - ./osrm-data:/data
+      - ./osrm-entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+
+  backend:
+    build: ./backend
+    container_name: tesla-backend
+    restart: always
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      - mosquitto
+      - osrm
+
+  frontend:
+    build: ./frontend
+    container_name: tesla-frontend
+    restart: always
+    ports:
+      - "8094:80"
+    depends_on:
+      - backend
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: tesla-mosquitto
+    restart: always
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  vehicle-command:
+    build: ./vehicle-command
+    container_name: tesla-vehicle-command
+    restart: always
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      - backend
+
+  fleet-telemetry:
+    build: ./fleet-telemetry
+    container_name: tesla-fleet-telemetry
+    restart: always
+    ports:
+      - "4443:4443"
+    volumes:
+      - ./telemetry-config.json:/etc/fleet-telemetry/config.json
+      - ${LETSENCRYPT_PATH:-./letsencrypt}:/letsencrypt:ro
+    depends_on:
+      - mosquitto

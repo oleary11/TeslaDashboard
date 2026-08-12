@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+requests==2.32.3
+python-dotenv==1.0.1
+apscheduler==3.10.4
+cryptography==43.0.3
+aiomqtt==2.3.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1

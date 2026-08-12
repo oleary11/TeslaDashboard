@@ -1,0 +1,13 @@
+.env
+data/
+osrm-data/
+telemetry-config.json
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.py[cod]
+*.pem
+*.key
+*.crt
+.DS_Store
+*.log
