@@ -262,7 +262,7 @@ export default function DashcamViewer() {
             {editorOpen && <div className="dashcam-editor-topbar"><div><strong>TeslaCam Studio</strong><span>{formatStamp(selected.timestamp)} · {CAMERAS[availableCamera]?.name}</span></div><button onClick={() => setEditorOpen(false)}>Done</button></div>}
             <div className="dashcam-stage-head">
               <div><span className={`dashcam-type type-${selected.type.toLowerCase()}`}>{selected.event_label || selected.type}</span><strong>{formatStamp(selected.timestamp)}</strong></div>
-              <div className="dashcam-stage-actions">{selected.is_event && <button onClick={jumpToEvent}>Jump to event · {formatTime(selected.event_offset)}</button>}<button onClick={() => setEditorOpen(true)}>Open editor</button></div>
+              <div className="dashcam-stage-actions">{selected.is_event && <button onClick={jumpToEvent}>Jump to event · {formatTime(selected.event_offset)}</button>}<button className={editorOpen ? 'active' : ''} onClick={() => setEditorOpen(value => !value)}>{editorOpen ? 'Close editor' : 'Open editor'}</button></div>
             </div>
             <div className={`dashcam-video-frame crop-${crop.replace(':', '-')}`}>
               <video
@@ -278,6 +278,7 @@ export default function DashcamViewer() {
               {!playing && <button className="dashcam-center-play" onClick={togglePlay}>▶</button>}
               <span className="dashcam-camera-label">{CAMERAS[availableCamera]?.name}{clips.length > 1 ? ` · Clip ${clipIndex + 1} of ${clips.length}` : ''}</span>
               {selected.is_event && clipIndex === selected.event_segment_index && <span className="dashcam-event-badge">● {selected.event_label} at {formatTime(selected.event_offset)}</span>}
+              <span className="dashcam-video-progress" style={{ width: `${duration ? time / duration * 100 : 0}%` }} />
             </div>
 
             <div className="dashcam-angle-picker">
@@ -291,7 +292,7 @@ export default function DashcamViewer() {
               <span>{formatTime(time)}</span>
               <input type="range" min="0" max={duration || 1} step="0.04" value={Math.min(time, duration || 0)} onChange={e => seek(e.target.value)} />
               <span>{formatTime(duration)}</span>
-              <select value={rate} onChange={e => changeRate(e.target.value)}><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+              <div className="dashcam-rates">{[.5, 1, 1.5, 2].map(value => <button key={value} className={rate === value ? 'active' : ''} onClick={() => changeRate(value)}>{value}×</button>)}</div>
             </div>
 
             {editorOpen && <div className="dashcam-editor">
@@ -305,9 +306,9 @@ export default function DashcamViewer() {
               </div>
               {segments[selectedSegment] && <div className="dashcam-edit-tools">
                 <label>In <input type="number" min="0" max={segments[selectedSegment].end - 0.1} step="0.1" value={segments[selectedSegment].start.toFixed(1)} onChange={e => patchSegment(selectedSegment, { start: Math.min(Number(e.target.value), segments[selectedSegment].end - 0.1) })} /></label>
-                <button onClick={() => patchSegment(selectedSegment, { start: time })}>Set in</button>
+                <button onClick={() => patchSegment(selectedSegment, { start: Math.min(time, segments[selectedSegment].end - .1) })}>Set in</button>
                 <label>Out <input type="number" min={segments[selectedSegment].start + 0.1} max={duration} step="0.1" value={segments[selectedSegment].end.toFixed(1)} onChange={e => patchSegment(selectedSegment, { end: Math.max(Number(e.target.value), segments[selectedSegment].start + 0.1) })} /></label>
-                <button onClick={() => patchSegment(selectedSegment, { end: time })}>Set out</button>
+                <button onClick={() => patchSegment(selectedSegment, { end: Math.max(time, segments[selectedSegment].start + .1) })}>Set out</button>
                 <button title="Move earlier" onClick={() => moveSegment(selectedSegment, -1)}>←</button>
                 <button title="Move later" onClick={() => moveSegment(selectedSegment, 1)}>→</button>
                 <button className="danger" disabled={segments.length === 1} onClick={() => removeSegment(selectedSegment)}>Remove</button>

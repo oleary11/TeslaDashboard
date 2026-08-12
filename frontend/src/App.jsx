@@ -76,15 +76,16 @@ export default function App() {
           <div className="header-brand">
             <div className="make">Tesla</div>
             <div className="model">{vehicle?.display_name || 'Dashboard'}</div>
-            {live && (
-              <div className="header-live">
-                <span className={`status-dot ${statusClass}`} />
-                <span className="hl-soc">{live.battery_level}%</span>
-                <span className="hl-range">{Math.round(live.battery_range)} mi</span>
-                <span className={`hl-status ${statusClass}`}>{statusLabel}</span>
-              </div>
-            )}
           </div>
+
+          {live && (
+            <div className="header-live">
+              <span className={`status-dot ${statusClass}`} />
+              <span className="hl-soc">{live.battery_level}%</span>
+              <span className="hl-range">{Math.round(live.battery_range)} mi</span>
+              <span className={`hl-status ${statusClass}`}>{statusLabel}</span>
+            </div>
+          )}
 
           {/* Actions on right */}
           <div className="header-actions">

@@ -203,7 +203,7 @@
 /* ── Content ──────────────────────────────────────────────── */
 .content {
   padding: 1.25rem 1.5rem;
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -448,6 +448,104 @@ tr:hover td { background: #131313; color: var(--text); }
 .dashcam-editing .dashcam-timeline-ruler { margin: 0 1rem; }
 .dashcam-editing .dashcam-segments { margin: 0 .2rem; padding-inline: .8rem; }
 .dashcam-editing .dashcam-edit-tools, .dashcam-editing .dashcam-export-row { padding: .5rem 1rem; }
+
+/* ── TeslaCam Studio Rail redesign ───────────────────────── */
+.dashcam { --cam-panel: #0d0e0f; --cam-line: #1c1e20; }
+.dashcam-heading { margin: .75rem 0 1.65rem; }
+.dashcam-eyebrow { font-size: .625rem; letter-spacing: .2em; margin-bottom: .65rem; }
+.dashcam-heading h1 { font-size: clamp(2rem, 3.2vw, 2.45rem); }
+.dashcam-heading p { margin-top: .75rem; font-size: .875rem; line-height: 1.5; }
+.dashcam-folder-btn, .dashcam-drop-action { border-radius: 9px; padding: .78rem 1.15rem; font-size: .72rem; }
+.dashcam-upload, .dashcam-message { border-radius: 10px; }
+.dashcam-workspace { grid-template-columns: 320px minmax(0,1fr); gap: 22px; border: 0; background: transparent; min-height: 0; align-items: start; }
+.dashcam-library, .dashcam-stage { background: var(--cam-panel); border: 1px solid var(--cam-line); border-radius: 14px; overflow: hidden; }
+.dashcam-library { border-right: 1px solid var(--cam-line); }
+.dashcam-library-head { height: auto; padding: 18px 18px 14px; border: 0; }
+.dashcam-library-head strong { font-size: .875rem; }
+.dashcam-library-head span { font-size: .6875rem; color: #5b5e60; }
+.dashcam-filters { padding: 0 18px 16px; border: 0; }
+.dashcam-filters .input { border-radius: 9px; background: #141517; border-color: #232527; padding: 10px 12px; font-size: .8125rem; }
+.dashcam-filter-row { gap: 6px; background: #131416; border: 1px solid #202224; border-radius: 10px; padding: 4px; margin-top: 12px; }
+.dashcam-filter-row button { border-radius: 7px; padding: 8px 4px; font-size: .6875rem; }
+.dashcam-filter-row button.active { background: #26292b; }
+.dashcam-show-all { gap: 10px; margin-top: 12px; font-size: .75rem; }
+.dashcam-show-all input { width: 30px; height: 16px; }
+.dashcam-show-all input::after { width: 12px; height: 12px; }
+.dashcam-show-all input:checked::after { left: 16px; }
+.dashcam-list { max-height: 620px; padding: 4px 10px 12px; scrollbar-width: thin; scrollbar-color: #26292b transparent; }
+.dashcam-event { border: 1px solid transparent; border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
+.dashcam-event:hover { background: #141516; }
+.dashcam-event.active { background: #191b1c; border-color: #2a2d2f; }
+.dashcam-event-main { grid-template-columns: 92px minmax(0,1fr); gap: 12px; padding: 10px; }
+.dashcam-thumb { width: 92px; border-radius: 8px; }
+.dashcam-event strong { font-size: .8125rem; margin-bottom: 4px; }
+.dashcam-event small { font-size: .6875rem; line-height: 1.5; }
+.dashcam-event-delete { margin-right: 8px; border-radius: 7px; }
+.dashcam-stage { padding: 20px; }
+.dashcam-stage-head { min-height: 34px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.dashcam-stage-head > div { gap: 12px; }
+.dashcam-stage-head strong { font-size: .9375rem; }
+.dashcam-stage-actions { gap: 8px; }
+.dashcam-stage-actions button, .dashcam-editor-topbar button { border-radius: 8px; padding: 8px 12px; font-size: .75rem; }
+.dashcam-stage-actions button:last-child { border-color: transparent; }
+.dashcam-stage-actions button:last-child.active { background: transparent; color: var(--accent); border-color: var(--accent); }
+.dashcam-type { border-radius: 6px; padding: 4px 9px; font-size: .625rem; }
+.dashcam-video-frame { border-radius: 12px; }
+.dashcam-video-progress { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); pointer-events: none; }
+.dashcam-center-play { width: 64px; height: 64px; }
+.dashcam-camera-label, .dashcam-event-badge { top: 14px; padding: 6px 10px; border-radius: 7px; font-size: .6875rem; backdrop-filter: blur(4px); }
+.dashcam-camera-label { left: 14px; }
+.dashcam-event-badge { right: 14px; }
+.dashcam-angle-picker { gap: 10px; border: 0; background: transparent; margin-top: 16px; }
+.dashcam-angle-picker button { border: 1px solid #1e2022; border-radius: 10px; background: #121315; padding: 11px 12px; column-gap: 10px; }
+.dashcam-angle-picker button.active { background: #201b18; border-color: #3a2c22; box-shadow: inset 0 2px var(--accent); }
+.dashcam-angle-picker button strong { font-size: .75rem; }
+.dashcam-angle-picker button small { font-size: .625rem; }
+.dashcam-transport { grid-template-columns: 40px 44px minmax(80px,1fr) 44px auto; gap: 14px; padding: 16px 0 4px; font-size: .8125rem; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+.dashcam-play { width: 40px; height: 36px; border-radius: 8px; }
+.dashcam-transport input { appearance: none; height: 4px; border-radius: 4px; background: #26292b; }
+.dashcam-transport input::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(255,107,43,.15); }
+.dashcam-rates { display: flex; gap: 3px; background: #16181a; border: 1px solid #232527; border-radius: 8px; padding: 3px; }
+.dashcam-rates button { border: 0; border-radius: 6px; background: transparent; color: #8a8d90; padding: 6px 9px; font-size: .6875rem; font-weight: 700; cursor: pointer; }
+.dashcam-rates button.active { background: var(--accent); color: #100a07; }
+.dashcam-editor { border-radius: 12px; background: #0a0b0c; margin-top: 14px; overflow: hidden; }
+.dashcam-editor-head { padding: 14px 16px; }
+.dashcam-editor-head strong { font-size: .8125rem; }
+.dashcam-editor-head span { font-size: .6875rem; margin-top: 3px; }
+.dashcam-editor button { border-radius: 8px; padding: 8px 12px; font-size: .75rem; }
+.dashcam-timeline-ruler { height: 22px; margin: 0 16px; }
+.dashcam-timeline-ruler span { font-size: .625rem; }
+.dashcam-segments { gap: 5px; padding: 14px 16px; background: transparent; }
+.dashcam-segments button { min-width: 90px; border-radius: 9px; padding: 10px 12px 12px; }
+.dashcam-segments span { font-size: .625rem; margin-bottom: 4px; }
+.dashcam-segments strong { font-size: .75rem; font-family: ui-monospace, Menlo, monospace; }
+.dashcam-edit-tools { gap: 8px; padding: 12px 16px; }
+.dashcam-edit-tools label { font-size: .6875rem; display: flex; align-items: center; gap: 6px; }
+.dashcam-edit-tools input { width: 62px; margin: 0; border-radius: 7px; padding: 6px; font-size: .75rem; }
+.dashcam-export-row { padding: 12px 16px; }
+.dashcam-crop, .dashcam-export-summary { gap: 8px; }
+.dashcam-crop > span, .dashcam-export-summary > span { font-size: .75rem; }
+.dashcam-export-summary button { padding: 10px 16px; }
+
+/* The supplied Studio Rail design keeps editing in context with the viewer. */
+.dashcam-editing .dashcam-stage { position: static; inset: auto; z-index: auto; display: block; padding: 20px; overflow: hidden; }
+.dashcam-editing .dashcam-editor-topbar { display: none; }
+.dashcam-editing .dashcam-stage-head { display: flex; }
+.dashcam-editing .dashcam-video-frame { width: auto; height: auto; aspect-ratio: 16/9; }
+.dashcam-editing .dashcam-angle-picker { width: auto; margin: 16px 0 0; }
+.dashcam-editing .dashcam-transport { padding: 16px 0 4px; background: transparent; border: 0; }
+.dashcam-editing .dashcam-editor { display: block; margin-top: 14px; border: 1px solid var(--cam-line); overflow: hidden; }
+
+@media (min-width: 641px) {
+  .header { padding-inline: 28px; background: rgba(10,10,10,.92); backdrop-filter: blur(12px); }
+  .header-row { padding: 14px 0; }
+  .header-live { margin: 0; padding: 7px 12px; border: 1px solid #1f1f1f; border-radius: 999px; }
+  .hl-status { border-radius: 5px; }
+  .refresh-btn { border-radius: 8px; padding: 6px 11px; }
+  .tabs { border-top: 0; gap: 4px; }
+  .tab { padding: 11px 14px; }
+  .content { padding-top: 2rem; padding-bottom: 3.5rem; }
+}
 
 @media (max-width: 900px) {
   .dashcam-workspace { grid-template-columns: 220px minmax(0,1fr); }
