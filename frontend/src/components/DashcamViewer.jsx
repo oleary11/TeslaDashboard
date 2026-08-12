@@ -24,6 +24,7 @@ export default function DashcamViewer() {
   const [showAll, setShowAll] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [playing, setPlaying] = useState(false)
+  const [clipIndex, setClipIndex] = useState(0)
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [rate, setRate] = useState(1)
@@ -37,6 +38,7 @@ export default function DashcamViewer() {
   const [message, setMessage] = useState('')
   const videoRef = useRef(null)
   const pendingTime = useRef(0)
+  const continuePlaying = useRef(false)
 
   const refreshLibrary = async keepSelection => {
     try {
@@ -49,8 +51,10 @@ export default function DashcamViewer() {
   useEffect(() => { refreshLibrary(false) }, [])
 
   const selected = library.events.find(event => event.id === selectedId) || library.events[0]
-  const availableCamera = selected?.cameras[camera] ? camera : CAMERA_ORDER.find(key => selected?.cameras[key])
-  const source = selected?.cameras[availableCamera]
+  const clips = selected?.segments?.length ? selected.segments : selected ? [selected] : []
+  const activeClip = clips[clipIndex] || clips[0]
+  const availableCamera = activeClip?.cameras[camera] ? camera : CAMERA_ORDER.find(key => activeClip?.cameras[key])
+  const source = activeClip?.cameras[availableCamera]
 
   const filtered = useMemo(() => library.events.filter(event => {
     const matchesType = filter === 'All' || event.type === filter
@@ -61,6 +65,10 @@ export default function DashcamViewer() {
   useEffect(() => {
     if (selected?.event_camera && selected.cameras[selected.event_camera]) setCamera(selected.event_camera)
     else if (!selected?.cameras[camera]) setCamera(CAMERA_ORDER.find(key => selected?.cameras[key]) || 'front')
+    // Start at the beginning of the saved incident; Jump to event moves to the
+    // precise minute and offset that Tesla recorded in event.json.
+    setClipIndex(0)
+    continuePlaying.current = false
     setPlaying(false)
     setTime(0)
     setDuration(0)
@@ -70,7 +78,7 @@ export default function DashcamViewer() {
   }, [selected?.id])
 
   const chooseCamera = key => {
-    if (!selected?.cameras[key] || key === availableCamera) return
+    if (!activeClip?.cameras[key] || key === availableCamera) return
     pendingTime.current = videoRef.current?.currentTime || time
     setCamera(key)
     setPlaying(false)
@@ -81,8 +89,13 @@ export default function DashcamViewer() {
     setDuration(length)
     if (!segments.length && length) setSegments([{ path: source.path, start: 0, end: length }])
     event.currentTarget.currentTime = Math.min(pendingTime.current, length || 0)
+    pendingTime.current = 0
     setTime(event.currentTarget.currentTime)
     event.currentTarget.playbackRate = rate
+    if (continuePlaying.current) {
+      continuePlaying.current = false
+      event.currentTarget.play().catch(() => {})
+    }
   }
 
   const togglePlay = () => {
@@ -95,6 +108,21 @@ export default function DashcamViewer() {
     const next = Number(value)
     if (videoRef.current) videoRef.current.currentTime = next
     setTime(next)
+  }
+
+  const jumpToEvent = () => {
+    const targetClip = selected?.event_segment_index || 0
+    pendingTime.current = selected?.event_offset || 0
+    if (targetClip !== clipIndex) setClipIndex(targetClip)
+    else seek(pendingTime.current)
+  }
+
+  const finishClip = () => {
+    if (clipIndex < clips.length - 1) {
+      pendingTime.current = 0
+      continuePlaying.current = true
+      setClipIndex(index => index + 1)
+    } else setPlaying(false)
   }
 
   const changeRate = value => {
@@ -222,7 +250,7 @@ export default function DashcamViewer() {
               {filtered.map(event => <div key={event.id} className={`dashcam-event ${selected?.id === event.id ? 'active' : ''} ${deleteConfirm === event.id ? 'confirming' : ''}`}>
                 <button className="dashcam-event-main" onClick={() => { setSelectedId(event.id); setDeleteConfirm(null) }}>
                   <span className="dashcam-thumb">{event.thumbnail ? <img loading="lazy" src={dashcamMediaUrl(event.thumbnail, library.media_token)} alt="" /> : <span>{CAMERAS[Object.keys(event.cameras)[0]]?.icon || '▶'}</span>}<i className={`type-${event.type.toLowerCase()}`} /></span>
-                  <span className="dashcam-event-copy"><strong>{formatStamp(event.timestamp)}</strong><small>{event.event_label || event.type} · {Object.keys(event.cameras).length} angles</small><small>{formatBytes(event.bytes)}</small></span>
+                  <span className="dashcam-event-copy"><strong>{formatStamp(event.timestamp)}</strong><small>{event.event_label || event.type} · {Object.keys(event.cameras).length} angles{event.segments?.length > 1 ? ` · ${event.segments.length} clips` : ''}</small><small>{formatBytes(event.bytes)}</small></span>
                 </button>
                 <button className="dashcam-event-delete" disabled={deleting === event.id} onClick={() => removeEvent(event)} title={deleteConfirm === event.id ? 'Click again to permanently delete' : 'Delete clip'}>{deleting === event.id ? '…' : deleteConfirm === event.id ? 'Delete?' : '×'}</button>
               </div>)}
@@ -234,7 +262,7 @@ export default function DashcamViewer() {
             {editorOpen && <div className="dashcam-editor-topbar"><div><strong>TeslaCam Studio</strong><span>{formatStamp(selected.timestamp)} · {CAMERAS[availableCamera]?.name}</span></div><button onClick={() => setEditorOpen(false)}>Done</button></div>}
             <div className="dashcam-stage-head">
               <div><span className={`dashcam-type type-${selected.type.toLowerCase()}`}>{selected.event_label || selected.type}</span><strong>{formatStamp(selected.timestamp)}</strong></div>
-              <div className="dashcam-stage-actions">{selected.is_event && <button onClick={() => seek(selected.event_offset)}>Jump to event · {formatTime(selected.event_offset)}</button>}<button onClick={() => setEditorOpen(true)}>Open editor</button></div>
+              <div className="dashcam-stage-actions">{selected.is_event && <button onClick={jumpToEvent}>Jump to event · {formatTime(selected.event_offset)}</button>}<button onClick={() => setEditorOpen(true)}>Open editor</button></div>
             </div>
             <div className={`dashcam-video-frame crop-${crop.replace(':', '-')}`}>
               <video
@@ -245,16 +273,16 @@ export default function DashcamViewer() {
                 onLoadedMetadata={onMetadata}
                 onTimeUpdate={e => setTime(e.currentTarget.currentTime)}
                 onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)} onClick={togglePlay}
+                onEnded={finishClip} onClick={togglePlay}
               />
               {!playing && <button className="dashcam-center-play" onClick={togglePlay}>▶</button>}
-              <span className="dashcam-camera-label">{CAMERAS[availableCamera]?.name}</span>
-              {selected.is_event && <span className="dashcam-event-badge">● {selected.event_label} at {formatTime(selected.event_offset)}</span>}
+              <span className="dashcam-camera-label">{CAMERAS[availableCamera]?.name}{clips.length > 1 ? ` · Clip ${clipIndex + 1} of ${clips.length}` : ''}</span>
+              {selected.is_event && clipIndex === selected.event_segment_index && <span className="dashcam-event-badge">● {selected.event_label} at {formatTime(selected.event_offset)}</span>}
             </div>
 
             <div className="dashcam-angle-picker">
-              {CAMERA_ORDER.map(key => <button key={key} disabled={!selected.cameras[key]} className={availableCamera === key ? 'active' : ''} onClick={() => chooseCamera(key)}>
-                <span>{CAMERAS[key].icon}</span><strong>{CAMERAS[key].name}</strong><small>{selected.cameras[key] ? 'Available' : 'Missing'}</small>
+              {CAMERA_ORDER.map(key => <button key={key} disabled={!activeClip?.cameras[key]} className={availableCamera === key ? 'active' : ''} onClick={() => chooseCamera(key)}>
+                <span>{CAMERAS[key].icon}</span><strong>{CAMERAS[key].name}</strong><small>{activeClip?.cameras[key] ? 'Available' : 'Missing'}</small>
               </button>)}
             </div>
 

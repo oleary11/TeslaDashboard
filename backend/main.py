@@ -1427,6 +1427,7 @@ def dashcam_events(user=Depends(get_current_user)):
         group_key = f"{prefix}/{parent_relative}/{match.group(1)}" if prefix else f"{parent_relative}/{match.group(1)}"
         item = groups.setdefault(group_key, {
             "id": group_key,
+            "folder": f"{prefix}/{parent_relative}" if prefix else parent_relative,
             "timestamp": match.group(1),
             "type": _dashcam_type(relative),
             "cameras": {},
@@ -1467,7 +1468,52 @@ def dashcam_events(user=Depends(get_current_user)):
     if len(_dashcam_media_tokens) > 1000:
         for key in list(_dashcam_media_tokens)[:500]:
             _dashcam_media_tokens.pop(key, None)
-    events = sorted(groups.values(), key=lambda item: item["timestamp"], reverse=True)
+    # Tesla stores every minute that belongs to one saved/Sentry incident in the
+    # same directory. Present that directory as one event while retaining the
+    # individual files as a lightweight playback playlist (no transcoding).
+    collections: dict[str, list[dict]] = {}
+    standalone: list[dict] = []
+    for item in groups.values():
+        first_camera = next(iter(item["cameras"].values()), None)
+        source_folder = _safe_dashcam_path(user["id"], first_camera["path"]).parent if first_camera else None
+        if source_folder and (source_folder / "event.json").is_file():
+            collections.setdefault(item["folder"], []).append(item)
+        else:
+            item.pop("folder", None)
+            item["segments"] = [{
+                "timestamp": item["timestamp"],
+                "cameras": item["cameras"],
+                "bytes": item["bytes"],
+            }]
+            item["event_segment_index"] = 0
+            standalone.append(item)
+
+    events = standalone
+    for folder, clips in collections.items():
+        clips.sort(key=lambda item: item["timestamp"])
+        event_candidates = [
+            (index, clip) for index, clip in enumerate(clips)
+            if clip["is_event"] and clip["event_offset"] is not None
+        ]
+        # The 90-second scan tolerance can associate metadata with two adjacent
+        # minute files. The real event clip is the one with the smallest
+        # non-negative offset from its start time.
+        event_index = min(event_candidates, key=lambda pair: pair[1]["event_offset"])[0] if event_candidates else 0
+        event = dict(clips[event_index])
+        event.update({
+            "id": folder,
+            "bytes": sum(clip["bytes"] for clip in clips),
+            "segments": [{
+                "timestamp": clip["timestamp"],
+                "cameras": clip["cameras"],
+                "bytes": clip["bytes"],
+            } for clip in clips],
+            "event_segment_index": event_index,
+        })
+        event.pop("folder", None)
+        events.append(event)
+
+    events.sort(key=lambda item: item["timestamp"], reverse=True)
     return {"events": events, "total_bytes": total_bytes, "media_token": media_token}
 
 
