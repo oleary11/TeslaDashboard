@@ -61,7 +61,6 @@ export const uploadDashcamFile = (file, path, onProgress) => new Promise((resolv
   xhr.send(file)
 })
 export const dashcamMediaUrl = (path, mediaToken) => `${B}/dashcam/media?path=${encodeURIComponent(path)}&media_token=${encodeURIComponent(mediaToken)}`
-export const dashcamPreviewUrl = (path, at, mediaToken) => `${B}/dashcam/preview?path=${encodeURIComponent(path)}&at=${encodeURIComponent(at)}&media_token=${encodeURIComponent(mediaToken)}`
 export const deleteDashcamEvent = camera_paths =>
   fetch(`${B}/dashcam/events`, { method: 'DELETE', ...hj(), body: JSON.stringify({ camera_paths }) }).then(async r => { if (!r.ok) throw new Error((await r.json()).detail || 'Delete failed'); return r.json() })
 export const exportDashcamEdit = (segments, crop) =>

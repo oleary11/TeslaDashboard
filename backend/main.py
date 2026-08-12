@@ -2,7 +2,6 @@ import os
 import json
 import asyncio
 import logging
-import hashlib
 import re
 import shutil
 import subprocess
@@ -55,7 +54,7 @@ DASHCAM_DIRECT_FOLDERS = ("SavedClips", "RecentClips", "SentryClips")
 DASHCAM_ROOT.mkdir(parents=True, exist_ok=True)
 _dashcam_media_tokens: dict[str, int] = {}
 _dashcam_clip_re = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})-(front|back|left_repeater|right_repeater|left_pillar|right_pillar)\.mp4$",
+    r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})-(front|back|left_repeater|right_repeater)\.mp4$",
     re.IGNORECASE,
 )
 
@@ -1383,10 +1382,7 @@ def _dashcam_event_metadata(directory: Path) -> dict | None:
         }
         camera_id = str(data.get("camera", ""))
         # Tesla encodes the triggering camera numerically in event.json.
-        camera_names = {
-            "0": "front", "1": "left_repeater", "2": "right_repeater", "3": "back",
-            "5": "left_pillar", "6": "right_pillar",
-        }
+        camera_names = {"0": "front", "1": "left_repeater", "2": "right_repeater", "3": "back"}
         return {
             "timestamp": timestamp,
             "reason": reason,
@@ -1541,32 +1537,6 @@ def dashcam_media(request: Request, path: str, media_token: str):
     if status_code == 206:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     return StreamingResponse(chunks(), status_code=status_code, media_type=media_type, headers=headers)
-
-
-@app.get("/api/dashcam/preview")
-def dashcam_preview(path: str, at: float, media_token: str):
-    user_id = _media_user(media_token)
-    source = _safe_dashcam_path(user_id, path)
-    if not source.is_file() or source.suffix.lower() != ".mp4":
-        raise HTTPException(404, "Clip not found")
-    at = max(0.0, min(float(at), 90.0))
-    cache_root = DASHCAM_ROOT / ".preview-cache"
-    cache_root.mkdir(parents=True, exist_ok=True)
-    fingerprint = hashlib.sha256(f"{source}:{source.stat().st_mtime_ns}:{at:.2f}".encode()).hexdigest()
-    preview = cache_root / f"{fingerprint}.jpg"
-    if not preview.is_file():
-        if not shutil.which("ffmpeg"):
-            raise HTTPException(503, "Preview generator is unavailable")
-        partial = preview.with_suffix(".part.jpg")
-        result = subprocess.run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(at),
-            "-i", str(source), "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", str(partial),
-        ], capture_output=True, timeout=30)
-        if result.returncode != 0:
-            partial.unlink(missing_ok=True)
-            raise HTTPException(500, "Could not generate preview")
-        partial.replace(preview)
-    return FileResponse(preview, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.delete("/api/dashcam/events")
