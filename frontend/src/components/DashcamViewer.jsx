@@ -59,10 +59,12 @@ export default function DashcamViewer() {
   }), [library.events, filter, query, showAll])
 
   useEffect(() => {
+    const initialTime = selected?.is_event ? Number(selected.event_offset || 0) : 0
+    pendingTime.current = initialTime
     if (selected?.event_camera && selected.cameras[selected.event_camera]) setCamera(selected.event_camera)
     else if (!selected?.cameras[camera]) setCamera(CAMERA_ORDER.find(key => selected?.cameras[key]) || 'front')
     setPlaying(false)
-    setTime(0)
+    setTime(initialTime)
     setDuration(0)
     setSegments([])
     setSelectedSegment(0)
@@ -82,6 +84,7 @@ export default function DashcamViewer() {
     if (!segments.length && length) setSegments([{ path: source.path, start: 0, end: length }])
     event.currentTarget.currentTime = Math.min(pendingTime.current, length || 0)
     setTime(event.currentTarget.currentTime)
+    pendingTime.current = 0
     event.currentTarget.playbackRate = rate
   }
 
