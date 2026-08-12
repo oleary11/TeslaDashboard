@@ -161,6 +161,13 @@ export default function DashcamViewer() {
     setSelectedSegment(target)
   }
 
+  const duplicateSegment = () => {
+    const segment = segments[selectedSegment]
+    if (!segment) return
+    setSegments(current => [...current.slice(0, selectedSegment + 1), { ...segment }, ...current.slice(selectedSegment + 1)])
+    setSelectedSegment(selectedSegment + 1)
+  }
+
   const uploadFolder = async event => {
     const files = Array.from(event.target.files).filter(file => CLIP_RE.test(file.name))
     event.target.value = ''
@@ -217,8 +224,7 @@ export default function DashcamViewer() {
       <div className="dashcam-heading">
         <div>
           <div className="dashcam-eyebrow">TeslaCam Studio</div>
-          <h1>Your drives, from every angle.</h1>
-          <p>Fast local playback and simple edits. Originals always remain untouched.</p>
+          <p>{library.events.length} events · {formatBytes(library.total_bytes)} · originals untouched</p>
         </div>
         <label className={`dashcam-folder-btn ${upload ? 'disabled' : ''}`}>
           <span>{upload ? 'Uploading…' : '+ Import TeslaCam'}</span>
@@ -296,7 +302,7 @@ export default function DashcamViewer() {
             </div>
 
             {editorOpen && <div className="dashcam-editor">
-              <div className="dashcam-editor-head"><div><strong>Quick editor</strong><span>Split, trim, rearrange and crop</span></div><button onClick={splitSegment}>Split at playhead</button></div>
+              <div className="dashcam-editor-head"><div className="dashcam-editor-actions"><button onClick={splitSegment}>✂ Split</button><button onClick={duplicateSegment}>▣ Duplicate</button><button className="danger" disabled={segments.length === 1} onClick={() => removeSegment(selectedSegment)}>♲ Delete</button></div><div className="dashcam-editor-clock"><strong><i>{formatTime(time)}</i> / {formatTime(duration)}</strong><span>Timeline</span></div></div>
               <div className="dashcam-timeline-ruler">{[0, .25, .5, .75, 1].map(point => <span key={point} style={{ left: `${point * 100}%` }}>{formatTime(duration * point)}</span>)}</div>
               <div className="dashcam-segments">
                 {segments.map((segment, index) => <button key={`${segment.start}-${segment.end}-${index}`} style={{ flex: Math.max(.08, (segment.end - segment.start) / (duration || 1)) }} className={selectedSegment === index ? 'active' : ''} onClick={() => { setSelectedSegment(index); seek(segment.start) }}>
@@ -311,7 +317,6 @@ export default function DashcamViewer() {
                 <button onClick={() => patchSegment(selectedSegment, { end: Math.max(time, segments[selectedSegment].start + .1) })}>Set out</button>
                 <button title="Move earlier" onClick={() => moveSegment(selectedSegment, -1)}>←</button>
                 <button title="Move later" onClick={() => moveSegment(selectedSegment, 1)}>→</button>
-                <button className="danger" disabled={segments.length === 1} onClick={() => removeSegment(selectedSegment)}>Remove</button>
               </div>}
               <div className="dashcam-export-row">
                 <div className="dashcam-crop"><span>Crop</span>{['original', '16:9', '1:1', '9:16'].map(value => <button key={value} className={crop === value ? 'active' : ''} onClick={() => setCrop(value)}>{value === 'original' ? 'Original' : value}</button>)}</div>
