@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { dashcamMediaUrl, deleteDashcamEvent, exportDashcamEdit, fetchDashcamEvents, uploadDashcamFile } from '../api'
+import { dashcamMediaUrl, dashcamPreviewUrl, deleteDashcamEvent, exportDashcamEdit, fetchDashcamEvents, uploadDashcamFile } from '../api'
 
 const CAMERAS = {
   front: { name: 'Front', icon: '↑' },
   back: { name: 'Rear', icon: '↓' },
   left_repeater: { name: 'Left', icon: '←' },
   right_repeater: { name: 'Right', icon: '→' },
+  left_pillar: { name: 'Left pillar', icon: '↖' },
+  right_pillar: { name: 'Right pillar', icon: '↗' },
 }
 const CAMERA_ORDER = Object.keys(CAMERAS)
-const CLIP_RE = /-(front|back|left_repeater|right_repeater)\.mp4$/i
+const CLIP_RE = /-(front|back|left_repeater|right_repeater|left_pillar|right_pillar)\.mp4$/i
+
+const eventDisplayCamera = event => event?.cameras[event?.event_camera] ? event.event_camera : CAMERA_ORDER.find(key => event?.cameras[key])
 
 const stampDate = stamp => new Date(stamp.replace('_', 'T').replace(/-(\d{2})-(\d{2})$/, ':$1:$2'))
 const formatStamp = stamp => stampDate(stamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
@@ -224,7 +228,7 @@ export default function DashcamViewer() {
             <div className="dashcam-list">
               {filtered.map(event => <div key={event.id} className={`dashcam-event ${selected?.id === event.id ? 'active' : ''} ${deleteConfirm === event.id ? 'confirming' : ''}`}>
                 <button className="dashcam-event-main" onClick={() => { setSelectedId(event.id); setDeleteConfirm(null) }}>
-                  <span className="dashcam-thumb">{event.thumbnail ? <img loading="lazy" src={dashcamMediaUrl(event.thumbnail, library.media_token)} alt="" /> : <span>{CAMERAS[Object.keys(event.cameras)[0]]?.icon || '▶'}</span>}<i className={`type-${event.type.toLowerCase()}`} /></span>
+                  <span className="dashcam-thumb">{eventDisplayCamera(event) ? <img loading="lazy" src={dashcamPreviewUrl(event.cameras[eventDisplayCamera(event)].path, event.event_offset || 0, library.media_token)} alt={`${CAMERAS[eventDisplayCamera(event)].name} camera at event`} /> : <span>▶</span>}<i className={`type-${event.type.toLowerCase()}`} /></span>
                   <span className="dashcam-event-copy"><strong>{formatStamp(event.timestamp)}</strong><small>{event.event_label || event.type} · {Object.keys(event.cameras).length} angles</small><small>{formatBytes(event.bytes)}</small></span>
                 </button>
                 <button className="dashcam-event-delete" disabled={deleting === event.id} onClick={() => removeEvent(event)} title={deleteConfirm === event.id ? 'Click again to permanently delete' : 'Delete clip'}>{deleting === event.id ? '…' : deleteConfirm === event.id ? 'Delete?' : '×'}</button>
