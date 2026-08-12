@@ -6,9 +6,11 @@ const CAMERAS = {
   back: { name: 'Rear', icon: '↓' },
   left_repeater: { name: 'Left', icon: '←' },
   right_repeater: { name: 'Right', icon: '→' },
+  left_pillar: { name: 'Left pillar', icon: '↖' },
+  right_pillar: { name: 'Right pillar', icon: '↗' },
 }
 const CAMERA_ORDER = Object.keys(CAMERAS)
-const CLIP_RE = /-(front|back|left_repeater|right_repeater)\.mp4$/i
+const CLIP_RE = /-(front|back|left_repeater|right_repeater|left_pillar|right_pillar)\.mp4$/i
 
 const eventDisplayCamera = event => event?.cameras[event?.event_camera] ? event.event_camera : CAMERA_ORDER.find(key => event?.cameras[key])
 

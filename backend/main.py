@@ -1383,9 +1383,10 @@ def _dashcam_event_metadata(directory: Path) -> dict | None:
         }
         camera_id = str(data.get("camera", ""))
         # Tesla encodes the triggering camera numerically in event.json.
-        # Tesla DAS camera IDs used by event.json (validated against the
-        # corresponding event thumbnail and camera frames).
-        camera_names = {"0": "front", "5": "left_repeater", "6": "right_repeater", "7": "back"}
+        camera_names = {
+            "0": "front", "1": "left_repeater", "2": "right_repeater", "3": "back",
+            "5": "left_pillar", "6": "right_pillar",
+        }
         return {
             "timestamp": timestamp,
             "reason": reason,
@@ -1563,16 +1564,7 @@ def dashcam_preview(path: str, at: float, media_token: str):
         ], capture_output=True, timeout=30)
         if result.returncode != 0:
             partial.unlink(missing_ok=True)
-            # Some Tesla event timestamps land in a recording gap or beyond a
-            # short final segment. Use the last decodable frame rather than a
-            # broken image while keeping it tied to the same playable MP4.
-            result = subprocess.run([
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-sseof", "-0.25",
-                "-i", str(source), "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", str(partial),
-            ], capture_output=True, timeout=30)
-            if result.returncode != 0:
-                partial.unlink(missing_ok=True)
-                raise HTTPException(500, "Could not generate preview")
+            raise HTTPException(500, "Could not generate preview")
         partial.replace(preview)
     return FileResponse(preview, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
