@@ -20,6 +20,7 @@ export const fetchAuthStatus = () => fetch(`${B}/auth/status`, h()).then(r => r.
 export const fetchVehicle = () => fetch(`${B}/vehicle`, h()).then(r => r.json())
 export const fetchVehicleImage = () => fetch(`${B}/vehicle/image`, h()).then(r => r.json())
 export const fetchLive = () => fetch(`${B}/vehicle/live`, h()).then(r => r.json())
+export const fetchTelemetryRange = (start, end) => fetch(`${B}/telemetry?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, h()).then(r => r.ok ? r.json() : [])
 export const fetchCharges = () => fetch(`${B}/charges`, h()).then(r => r.json())
 export const fetchChargesSummary = () => fetch(`${B}/charges/summary`, h()).then(r => r.json())
 export const fetchDrives = () => fetch(`${B}/drives`, h()).then(r => r.json())
@@ -49,6 +50,10 @@ export const fetchSpeedHistogram = () => fetch(`${B}/drives/speed-histogram`, h(
 export const fetchGasSavings = (mpg = 28) => fetch(`${B}/charges/gas-savings?mpg=${mpg}`, h()).then(r => r.json())
 export const fetchGarage = () => fetch(`${B}/garage`, h()).then(r => r.json())
 export const fetchDashcamEvents = () => fetch(`${B}/dashcam/events`, h()).then(r => { if (!r.ok) throw r; return r.json() })
+export const fetchDashcamStorage = () => fetch(`${B}/dashcam/storage`, h()).then(r => { if (!r.ok) throw r; return r.json() })
+export const fetchExistingDashcamFiles = files =>
+  fetch(`${B}/dashcam/files/existing`, { method: 'POST', ...hj(), body: JSON.stringify({ files }) })
+    .then(async r => { if (!r.ok) throw new Error((await r.json()).detail || 'Could not check existing clips'); return r.json() })
 export const uploadDashcamFile = (file, path, onProgress) => new Promise((resolve, reject) => {
   const xhr = new XMLHttpRequest()
   xhr.open('PUT', `${B}/dashcam/files?path=${encodeURIComponent(path)}`)

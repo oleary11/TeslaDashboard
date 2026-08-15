@@ -52,11 +52,17 @@ DASHCAM_ROOT = Path(os.environ.get("DASHCAM_ROOT", "/data/dashcam"))
 DASHCAM_DIRECT_USER_ID = int(os.environ.get("DASHCAM_DIRECT_USER_ID", "1"))
 DASHCAM_DIRECT_FOLDERS = ("SavedClips", "RecentClips", "SentryClips")
 DASHCAM_ROOT.mkdir(parents=True, exist_ok=True)
+# 0 (default) means unlimited; auto-pruning only ever removes RecentClips and
+# (optionally) SentryClips. SavedClips are never auto-deleted.
+DASHCAM_MAX_STORAGE_GB = float(os.environ.get("DASHCAM_MAX_STORAGE_GB", "0") or "0")
+DASHCAM_MAX_STORAGE_BYTES = DASHCAM_MAX_STORAGE_GB * 1e9 if DASHCAM_MAX_STORAGE_GB > 0 else None
+DASHCAM_PROTECT_SENTRY = os.environ.get("DASHCAM_PROTECT_SENTRY", "false").strip().lower() in ("1", "true", "yes")
 _dashcam_media_tokens: dict[str, int] = {}
 _dashcam_clip_re = re.compile(
     r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})-(front|back|left_repeater|right_repeater)\.mp4$",
     re.IGNORECASE,
 )
+_dashcam_metadata_re = re.compile(r"^(event\.json|thumb\.png)$", re.IGNORECASE)
 
 _mqtt_task: asyncio.Task | None = None
 _vin_driving: dict[str, bool] = {}  # updated live from Gear MQTT messages
@@ -111,6 +117,7 @@ async def _mqtt_subscriber():
         try:
             async with aiomqtt.Client("mosquitto") as client:
                 await client.subscribe("tesla/+/v/VehicleSpeed")
+                await client.subscribe("tesla/+/v/BrakePedalPos")
                 await client.subscribe("tesla/+/v/Gear")
                 await client.subscribe("tesla/+/v/Location")
                 await client.subscribe("tesla/+/v/Heading")
@@ -141,6 +148,7 @@ async def _mqtt_subscriber():
                             _save_run(run)
                         _update_top_speed(vin, speed)
                         update_mqtt_drive_speed(vin, speed)
+                        _store_telemetry(vin, speed=speed)
                         now_ts = datetime.now(timezone.utc).isoformat()
                         if _vin_driving.get(vin):
                             loc = _vin_last_location.get(vin)
@@ -148,6 +156,8 @@ async def _mqtt_subscriber():
                                 _open_stop(vin, now_ts, loc[0], loc[1])
                             elif speed > 0:
                                 _close_stop(vin, now_ts)
+                    elif field == 'BrakePedalPos':
+                        _store_telemetry(vin, brake_pedal=str(value))
                     elif field == 'Gear':
                         gear = str(value)
                         log.info(f"Gear: {gear}")
@@ -418,8 +428,10 @@ async def lifespan(app: FastAPI):
     asyncio.get_event_loop().run_in_executor(None, import_history_all)
     asyncio.get_event_loop().run_in_executor(None, _configure_telemetry_all)
     asyncio.get_event_loop().run_in_executor(None, match_all_unmatched)
+    asyncio.get_event_loop().run_in_executor(None, dashcam_enforce_retention)
     scheduler.add_job(import_history_all, "interval", hours=6, id="history")
     scheduler.add_job(adaptive_tick_all, "interval", seconds=2, id="live")
+    scheduler.add_job(dashcam_enforce_retention, "interval", minutes=15, id="dashcam_retention")
     scheduler.start()
     _mqtt_task = asyncio.create_task(_mqtt_subscriber())
     yield
@@ -790,6 +802,21 @@ def vehicle_live(user=Depends(get_current_user)):
     if not row:
         raise HTTPException(404, "No live data yet — car hasn't been polled")
     return dict(row)
+
+
+@app.get("/api/telemetry")
+def telemetry_range(start: str, end: str, user=Depends(get_current_user)):
+    """Speed/brake samples in a wall-clock range, for syncing to dashcam playback.
+    Streamed telemetry only exists from whenever MQTT streaming was configured —
+    older footage will simply have no matching samples."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT ts, speed, brake_pedal FROM snapshots
+        WHERE user_id=? AND ts BETWEEN ? AND ? AND (speed IS NOT NULL OR brake_pedal IS NOT NULL)
+        ORDER BY ts ASC
+    """, (user["id"], start, end)).fetchall()
+    db.close()
+    return [dict(r) for r in rows]
 
 
 # ── Charging ──────────────────────────────────────────────────────────────────
@@ -1364,6 +1391,14 @@ def _dashcam_type(path: str) -> str:
     return "Clip"
 
 
+def _browser_dashcam_path(path: str) -> str:
+    """Remove the directory-picker's optional TeslaCam root directory."""
+    parts = Path(path).parts
+    if parts and parts[0].lower() == "teslacam":
+        return Path(*parts[1:]).as_posix()
+    return path
+
+
 def _dashcam_event_metadata(directory: Path) -> dict | None:
     event_file = directory / "event.json"
     if not event_file.is_file():
@@ -1394,11 +1429,94 @@ def _dashcam_event_metadata(directory: Path) -> dict | None:
         return None
 
 
+def _dir_bytes(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _dashcam_total_bytes() -> int:
+    return _dir_bytes(DASHCAM_ROOT) if DASHCAM_ROOT.is_dir() else 0
+
+
+def _dashcam_prunable_events() -> list[tuple[Path, str]]:
+    """Event directories eligible for automatic deletion, oldest first.
+
+    SavedClips are never eligible. SentryClips are eligible unless
+    DASHCAM_PROTECT_SENTRY is set. RecentClips (Tesla's rolling routine-driving
+    buffer) are always eligible and get pruned first because they sort oldest
+    within each retention pass.
+    """
+    oldest: dict[Path, str] = {}
+    for clip_path in DASHCAM_ROOT.rglob("*.mp4"):
+        if not clip_path.is_file() or clip_path.name.startswith("."):
+            continue
+        match = _dashcam_clip_re.match(clip_path.name)
+        if not match:
+            continue
+        parent = clip_path.parent
+        lowered = str(parent).lower()
+        if "savedclips" in lowered:
+            continue
+        if DASHCAM_PROTECT_SENTRY and "sentryclips" in lowered:
+            continue
+        timestamp = match.group(1)
+        if parent not in oldest or timestamp < oldest[parent]:
+            oldest[parent] = timestamp
+    # RecentClips before SentryClips at any given timestamp, since routine
+    # footage is the least valuable data to lose first.
+    return sorted(oldest.items(), key=lambda kv: (kv[1], "sentryclips" in str(kv[0]).lower()))
+
+
+def dashcam_enforce_retention():
+    """Delete the oldest prunable TeslaCam events until usage is back under cap."""
+    if DASHCAM_MAX_STORAGE_BYTES is None or not DASHCAM_ROOT.is_dir():
+        return
+    try:
+        total = _dashcam_total_bytes()
+    except OSError as exc:
+        log.warning("Dashcam retention could not measure usage: %s", exc)
+        return
+    if total <= DASHCAM_MAX_STORAGE_BYTES:
+        return
+    for parent, _timestamp in _dashcam_prunable_events():
+        if total <= DASHCAM_MAX_STORAGE_BYTES:
+            break
+        if not parent.is_dir():
+            continue
+        try:
+            reclaimed = _dir_bytes(parent)
+            shutil.rmtree(parent, ignore_errors=True)
+            total -= reclaimed
+            log.info(
+                "Dashcam retention: removed %s (%.1f MB reclaimed, cap %.0f GB)",
+                parent, reclaimed / 1e6, DASHCAM_MAX_STORAGE_GB,
+            )
+        except Exception as exc:
+            log.warning("Dashcam retention failed for %s: %s", parent, exc)
+    # Sweep now-empty event/date directories, but leave the top-level per-user
+    # and @direct SavedClips/SentryClips/RecentClips folders in place.
+    stray_dirs = sorted(
+        (p for p in DASHCAM_ROOT.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts), reverse=True,
+    )
+    for stray in stray_dirs:
+        if len(stray.relative_to(DASHCAM_ROOT).parts) < 2:
+            continue
+        try:
+            stray.rmdir()
+        except OSError:
+            pass
+
+
 def _media_user(media_token: str) -> int:
     user_id = _dashcam_media_tokens.get(media_token)
     if not user_id:
         raise HTTPException(401, "Invalid media token")
     return user_id
+
+
+@app.get("/api/dashcam/storage")
+def dashcam_storage(user=Depends(get_current_user)):
+    return {"used_bytes": _dashcam_total_bytes(), "max_bytes": DASHCAM_MAX_STORAGE_BYTES}
 
 
 @app.get("/api/dashcam/events")
@@ -1519,8 +1637,9 @@ def dashcam_events(user=Depends(get_current_user)):
 
 @app.put("/api/dashcam/files")
 async def upload_dashcam_file(request: Request, path: str, user=Depends(get_current_user)):
-    if not _dashcam_clip_re.match(Path(path).name):
+    if not (_dashcam_clip_re.match(Path(path).name) or _dashcam_metadata_re.match(Path(path).name)):
         raise HTTPException(400, "Only TeslaCam MP4 files are supported")
+    path = _browser_dashcam_path(path)
     destination = _safe_dashcam_path(user["id"], path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.part")
@@ -1533,6 +1652,39 @@ async def upload_dashcam_file(request: Request, path: str, user=Depends(get_curr
         partial.unlink(missing_ok=True)
         raise
     return {"path": path, "bytes": destination.stat().st_size}
+
+
+@app.post("/api/dashcam/files/existing")
+async def existing_dashcam_files(request: Request, user=Depends(get_current_user)):
+    """Return uploads that already exist with the same path and byte size."""
+    payload = await request.json()
+    files = payload.get("files") if isinstance(payload, dict) else None
+    if not isinstance(files, list) or len(files) > 10000:
+        raise HTTPException(400, "A files list of at most 10,000 items is required")
+
+    existing = []
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        size = item.get("bytes")
+        if not isinstance(path, str) or not (_dashcam_clip_re.match(Path(path).name) or _dashcam_metadata_re.match(Path(path).name)):
+            continue
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            continue
+        normalized_path = _browser_dashcam_path(path)
+        candidates = {
+            _safe_dashcam_path(user["id"], path),
+            _safe_dashcam_path(user["id"], normalized_path),
+        }
+        # SCP imports for the configured direct user live at the dashcam root,
+        # while browser imports live under the user's directory.
+        first_part = normalized_path.split("/", 1)[0]
+        if user["id"] == DASHCAM_DIRECT_USER_ID and first_part in DASHCAM_DIRECT_FOLDERS:
+            candidates.add(_safe_dashcam_path(user["id"], f"@direct/{normalized_path}"))
+        if any(candidate.is_file() and candidate.stat().st_size == size for candidate in candidates):
+            existing.append(path)
+    return {"existing": existing}
 
 
 @app.get("/api/dashcam/media")

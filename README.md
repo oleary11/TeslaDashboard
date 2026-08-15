@@ -85,7 +85,7 @@ LETSENCRYPT_PATH=/absolute/path/to/your/certificate-store
 
 `ADMIN_PASSWORD` must contain at least 12 characters on a new installation. If `JWT_SECRET` is omitted, the backend creates a private random secret at `data/jwt_secret`; explicitly setting it makes recovery and multi-instance deployments easier.
 
-Optional variables include home/work coordinates for commute detection, an EIA API key for fuel-price comparisons, and `DASHCAM_DIRECT_USER_ID` for SCP imports. See [`.env.example`](.env.example) for the complete list.
+Optional variables include home/work coordinates for commute detection, an EIA API key for fuel-price comparisons, `DASHCAM_DIRECT_USER_ID` for SCP/rsync imports, and `DASHCAM_MAX_STORAGE_GB`/`DASHCAM_PROTECT_SENTRY` for TeslaCam retention. See [`.env.example`](.env.example) for the complete list.
 
 ## 2. Create a Tesla developer application
 
@@ -142,6 +142,7 @@ For internet exposure, terminate HTTPS at a trusted reverse proxy and do not exp
 ### Browser import
 
 Open **Dashcam**, select **Import TeslaCam**, and choose the `TeslaCam` directory on the USB drive. Files upload into the authenticated user's private library under `data/dashcam/<user-id>/`.
+Files already present at the same relative path with the same byte size are skipped before upload, including files previously copied by SCP, so selecting the same folder again only transfers new or changed clips.
 
 ### SCP import
 
@@ -154,7 +155,53 @@ scp -O -r SentryClips server:/path/to/TeslaDashboard/data/dashcam/
 
 Copying `RecentClips` is optional and can consume considerable space because it contains Tesla's rolling routine-driving buffer. Direct imports are indexed while files remain in their original Tesla folder structure.
 
-## Updates
+### Automatic import from a teslausb Pi
+
+A Raspberry Pi Zero 2 W running [teslausb](https://github.com/marcone/teslausb) can present itself as the car's USB dashcam drive and automatically push footage to this server over Wi-Fi whenever it's in range — no manual SCP or browser import needed.
+
+**1. Build the Pi.** Flash teslausb per its own instructions (CanaKit Pi Zero 2 W + a case + the micro USB cable to the Tesla's front USB port). Give it a large enough microSD/USB storage for a buffer of footage between wifi syncs.
+
+**2. Wi-Fi.** teslausb's `wifi.conf` supports multiple networks; it connects to whichever is in range and only starts archiving once it sees a wifi network matching `archiveserver` in its config (so it won't try to sync over a phone hotspot, etc.). Add both home and work SSIDs.
+
+- **Home wifi** works normally with a PSK.
+- **Work wifi with a captive portal login page cannot be scripted through `wpa_supplicant` alone** — the Pi has no browser to click through the login screen, so it will associate but not get real internet/LAN access. The reliable fix is asking IT for a MAC-based bypass/device registration for the Pi's wifi MAC address (`cat /sys/class/net/wlan0/address` after first boot) so it skips the portal entirely. Without that, treat work wifi as unavailable to teslausb and rely on home wifi for archiving.
+- Whether the car (and Pi) will even be in range of either network while parked is worth confirming before relying on this — if not, archiving only happens when you're home.
+
+**3. Point archiving at this server.** teslausb's `archiveconfig.sh` should use the `rsync` archive method:
+
+```shell
+archive_host_name=<this-server's-hostname-or-LAN-IP>
+archive_username=teslacam
+archive_dir=/
+```
+
+Run `sudo dashcam-ingest/setup-teslacam-user.sh` once on this server first — it creates a `teslacam` Linux account that can *only* run `rsync` and *only* write inside `data/dashcam/{SavedClips,SentryClips,RecentClips}` (enforced with `rrsync` and a forced SSH `command=` in `authorized_keys`, plus `no-pty`/`no-port-forwarding`/`no-X11-forwarding`/`no-agent-forwarding`). It also prints the exact `archive_host_name`/`archive_username` values to use.
+
+The account's login shell must be a real shell (the script sets `/bin/sh`), not `nologin`/`false` — OpenSSH forced commands run as `<shell> -c "<command>"`, so a non-executing shell blocks the forced `rrsync` command too, not just interactive logins. The forced-command + `rrsync` jail is what actually constrains the account; the shell itself grants no access beyond what SSH lets through.
+
+Preferably, generate the SSH keypair *on the Pi* itself (teslausb's own setup usually offers this) so the private key never leaves the device — then run the setup script with the Pi's public key as an argument: `sudo dashcam-ingest/setup-teslacam-user.sh "ssh-ed25519 AAAA... root@teslausb"`. Otherwise, copy the bundled private key at `dashcam-ingest/teslacam_pi_key` onto the Pi as its archive SSH key — it is gitignored and must never be committed.
+
+The script also grants `teslacam` a traverse-only POSIX ACL (via the `acl` package, installed automatically if missing) on every ancestor directory of `data/dashcam` — needed because `rsync`/`rrsync` must reach that path even if a directory above it (e.g. a private home directory) isn't otherwise world-traversable. This only lets `teslacam` pass through those directories; it can't list or read their contents.
+
+Once installed, verify the whole chain works from the Pi before relying on it:
+
+```shell
+ssh -i <the archive private key> teslacam@<archive_host_name> true
+```
+
+A working setup exits silently or with an rsync-protocol message; `Permission denied (publickey)` means the key isn't installed/matched, and a Python traceback about a locked/inaccessible directory means the ACL step above didn't reach far enough (rerun the setup script, or check `getfacl` on each ancestor of `data/dashcam`).
+
+Because the Pi writes into the same `SavedClips`/`SentryClips`/`RecentClips` folders as manual SCP, footage it archives is indexed automatically for `DASHCAM_DIRECT_USER_ID` — nothing else to configure on the dashboard side.
+
+### Storage cap and automatic deletion
+
+Dashcam footage can consume a lot of disk space quickly, especially with an always-syncing Pi. Set `DASHCAM_MAX_STORAGE_GB` in `.env` to cap total space used by `data/dashcam`. A background job checks usage every 15 minutes and, if over cap, deletes the oldest events first:
+
+- `RecentClips` (Tesla's rolling routine-driving buffer) are always pruned first.
+- `SentryClips` are pruned next, oldest first — unless `DASHCAM_PROTECT_SENTRY=true`, in which case they're kept indefinitely like Saved clips.
+- `SavedClips` — footage you or Sentry Mode explicitly marked as "keep" in the car — are **never** auto-deleted, at any cap.
+
+The Dashcam page shows a usage bar against the configured cap when one is set. Deletion always removes a clip's full event folder (every camera angle plus `event.json`/`thumb.png`), matching the manual two-step delete already used in the UI.
 
 ```shell
 git pull
@@ -171,6 +218,7 @@ Stop the backend before taking a filesystem-level SQLite backup, or use SQLite's
 - `data/tesla_partner_key.pem`
 - `data/jwt_secret` when no `JWT_SECRET` is configured
 - `data/dashcam/` if footage must be retained
+- `dashcam-ingest/teslacam_pi_key` (the Pi's archive SSH private key), if using automatic teslausb import
 - `.env` and `telemetry-config.json` in a secure secrets backup
 
 Never commit these files. They are excluded by `.gitignore` because they contain credentials, precise vehicle/location history, or private video.
@@ -179,7 +227,8 @@ Never commit these files. They are excluded by `.gitignore` because they contain
 
 - Dashboard endpoints require a signed local user token; administrative endpoints additionally require an admin account.
 - Tesla OAuth client secrets stored through the UI are encrypted using the JWT secret.
-- Dashcam libraries are isolated per dashboard user. Direct SCP folders belong only to `DASHCAM_DIRECT_USER_ID`.
+- Dashcam libraries are isolated per dashboard user. Direct SCP/rsync folders belong only to `DASHCAM_DIRECT_USER_ID`.
+- The `teslacam` archive account (if configured) is forced-command SSH restricted to `rsync` inside `data/dashcam` only, with no port/X11/agent forwarding and no pty — it cannot reach any other path or run any other command, even though it has a login shell (required for the forced command to execute at all).
 - Video URLs use short-lived in-memory access tokens and support byte-range requests.
 - CORS is disabled by default. Set `CORS_ORIGINS` only when a separate trusted frontend origin requires it.
 - Use HTTPS, a strong administrator password, firewall rules, and rate limiting at the reverse proxy.

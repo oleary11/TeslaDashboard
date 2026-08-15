@@ -159,6 +159,7 @@ def init_db():
         ("users", "work_lon"),
         ("drives", "matched_route"),
         ("stops", "heading"),
+        ("snapshots", "brake_pedal"),
     ]:
         try:
             real_cols = {"home_lat", "home_lon", "work_lat", "work_lon", "heading"}

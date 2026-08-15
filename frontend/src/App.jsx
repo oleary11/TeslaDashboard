@@ -145,7 +145,7 @@ export default function App() {
         )}
       </header>
 
-      <main className="content">
+      <main className={`content ${tab === 'Dashcam' ? 'content-wide' : ''}`}>
         {tab === 'Live'     && <LiveStatus live={live} />}
         {tab === 'Charging' && <ChargingHistory />}
         {tab === 'Battery'  && <BatteryHealth />}

@@ -9,5 +9,6 @@ __pycache__/
 *.pem
 *.key
 *.crt
+dashcam-ingest/teslacam_pi_key
 .DS_Store
 *.log
